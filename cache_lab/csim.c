@@ -23,14 +23,17 @@ typedef struct Cache {
 Cache *create_cache(int s, int E, int b) {
     // s -> set index bits
     // E -> number of cache_lines per set
-    Cache *cache = (Cache *)malloc(sizeof(Cache));
-    cache->S = 1 << s; // 2^s
-    cache->E = E;
-    cache->B = 1 << b; // 2^b
+    int S = 1 << s;
+    int B = 1 << b;
 
-    cache->cache_line = (Cache_line **)malloc(cache->S * sizeof(Cache_line *));
+    Cache *cache = (Cache *)malloc(sizeof(Cache));
+    cache->S = S; // 2^s
+    cache->E = E;
+    cache->B = B; // 2^b
+
+    cache->cache_line = (Cache_line **)malloc(S * sizeof(Cache_line *));
     for (int i = 0; i < cache->S; i++) {
-        cache->cache_line[i] = (Cache_line *)malloc(cache->E * sizeof(Cache_line));
+        cache->cache_line[i] = (Cache_line *)malloc(E * sizeof(Cache_line));
         for (int j = 0; j < E; j++) {
             cache->cache_line[i][j].valid = 0;
             cache->cache_line[i][j].tag = 0;
@@ -54,6 +57,7 @@ int miss_count = 0;
 int eviction_count = 0;
 Cache *cache = NULL;
 int verbose = 0;
+char t[1000];
 
 int is_cache_hit(int set_index, int address_tag) {
     Cache_line *set = cache->cache_line[set_index];
@@ -136,10 +140,14 @@ void access_memory_data(int set_index, int address_tag) {
     }
 }
 
-void access_memory(char *file, int b, int s) {
+void access_memory(int b, int s) {
     FILE *pFile;
 
-    pFile = fopen(file, "r");
+    pFile = fopen(t, "r");
+
+    if (pFile == NULL) {
+        exit(-1);
+    }
 
     char operation;
     unsigned address;
@@ -191,7 +199,6 @@ int main(int argc, char **argv)
     // parse the command and get operation type and address
     int opt;
     char s, E, b;
-    char t[1000];
 
     while (-1 != (opt = getopt(argc, argv, "hvs:E:b:t:"))) {
         switch(opt) {
@@ -221,7 +228,7 @@ int main(int argc, char **argv)
         }
 
         cache = create_cache(s, E, b);
-        access_memory(t, b, s);
+        access_memory(b, s);
         free_cache(cache);
     }
 
