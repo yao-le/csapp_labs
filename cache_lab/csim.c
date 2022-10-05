@@ -1,208 +1,187 @@
 #include "cachelab.h"
-#include "unistd.h"
-#include "stdlib.h"
-#include "stdio.h"
-#include "string.h"
+#include <unistd.h>
 #include <getopt.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <limits.h>
 
-typedef struct Cache_line {
-    int valid;
-    int tag;
-    int timestamp;
+typedef struct cache_line
+{
+    int valid;     //有效位
+    int tag;       //标记位
+    int time_tamp; //时间戳
 } Cache_line;
 
-
-typedef struct Cache {
-    int S; // # number of sets
-    int E; // # number of lines per set
-    int B; // # data block size (bytes)
-    Cache_line **cache_line;
+typedef struct cache_
+{
+    int S;
+    int E;
+    int B;
+    Cache_line **line;
 } Cache;
 
-int hit_count = 0;
-int miss_count = 0;
-int eviction_count = 0;
-Cache *cache = NULL;
-int verbose = 0;
+int hit_count = 0, miss_count = 0, eviction_count = 0; // 记录冲突不命中、缓存不命中
+int verbose = 0;                                       //是否打印详细信息
 char t[1000];
+Cache *cache = NULL;
 
-void create_cache(int s, int E, int b) {
-    // s -> set index bits
-    // E -> number of cache_lines per set
+void Init_Cache(int s, int E, int b)
+{
     int S = 1 << s;
     int B = 1 << b;
-
     cache = (Cache *)malloc(sizeof(Cache));
-    cache->S = S; // 2^s
+    cache->S = S;
     cache->E = E;
-    cache->B = B; // 2^b
-
-    cache->cache_line = (Cache_line **)malloc(S * sizeof(Cache_line *));
-    for (int i = 0; i < S; i++) {
-        cache->cache_line[i] = (Cache_line *)malloc(E * sizeof(Cache_line));
-        for (int j = 0; j < E; j++) {
-            cache->cache_line[i][j].valid = 0;
-            cache->cache_line[i][j].tag = 0;
-            cache->cache_line[i][j].timestamp = 0;
+    cache->B = B;
+    cache->line = (Cache_line **)malloc(sizeof(Cache_line *) * S);
+    for (int i = 0; i < S; i++)
+    {
+        cache->line[i] = (Cache_line *)malloc(sizeof(Cache_line) * E);
+        for (int j = 0; j < E; j++)
+        {
+            cache->line[i][j].valid = 0; //初始时，高速缓存是空的
+            cache->line[i][j].tag = -1;
+            cache->line[i][j].time_tamp = 0;
         }
     }
 }
 
-void free_cache() {
+void free_Cache()
+{
     int S = cache->S;
-    for (int i = 0; i < S; i++) {
-        free(cache->cache_line[i]);
+    for (int i = 0; i < S; i++)
+    {
+        free(cache->line[i]);
     }
-    free(cache->cache_line);
+    free(cache->line);
     free(cache);
 }
-
-
-int is_cache_hit(int set_index, int address_tag) {
-    Cache_line *set = cache->cache_line[set_index];
-    for (int i = 0; i < cache->E; i++) {
-        if (set[i].valid && set[i].tag == address_tag) {
-            return i; // cache hit, return line index
-        }
+int get_index(int op_s, int op_tag)
+{
+    for (int i = 0; i < cache->E; i++)
+    {
+        if (cache->line[op_s][i].valid && cache->line[op_s][i].tag == op_tag)
+            return i;
     }
-    return -1; // cache miss
-}
-
-
-int is_full(int set_index) {
-    Cache_line *set = cache->cache_line[set_index];
-    for (int i = 0; i < cache->E; i++) {
-        if (set[i].valid == 0) {
-            // not full
-            return i; // return index of empty line in the set
-        }
-    }
-    // this set is full
     return -1;
 }
-
-// when the cache set is full, call this function
-int get_LRU_index(int set_index) {
-    int max_time_stamp = 0;
-    int LRU_index = 0;
-
-    Cache_line *set = cache->cache_line[set_index];
-    for (int i = 0; i < cache->E; i++) {
-        if (set[i].valid && set[i].timestamp > max_time_stamp) {
-            max_time_stamp = set[i].timestamp;
-            LRU_index = i;
+int find_LRU(int op_s)
+{
+    int max_index = 0;
+    int max_stamp = 0;
+    for(int i = 0; i < cache->E; i++){
+        if(cache->line[op_s][i].time_tamp > max_stamp){
+            max_stamp = cache->line[op_s][i].time_tamp;
+            max_index = i;
         }
     }
-    return LRU_index;
+    return max_index;
 }
-
-
-void update_cache_line(int set_index, int address_tag, int line_index) {
-    Cache_line *set = cache->cache_line[set_index];
-    set[line_index].valid = 1;
-    set[line_index].tag = address_tag;
-
-    for (int i = 0; i < cache->E; i++) {
-        set[i].timestamp++;
+int is_full(int op_s)
+{
+    for (int i = 0; i < cache->E; i++)
+    {
+        if (cache->line[op_s][i].valid == 0)
+            return i;
     }
-    set[line_index].timestamp = 0;
+    return -1;
 }
-
-
-void access_memory_data(int set_index, int address_tag) {
-    // check if there is a cache hit
-    int line_index = is_cache_hit(set_index, address_tag);
-    if (line_index != -1) { // cache hit
-        hit_count++;
-        if (verbose) {
-            printf(" hit");
-        }
-
-        update_cache_line(set_index, address_tag, line_index);
-    } else { // cache miss
+void update(int i, int op_s, int op_tag){
+    cache->line[op_s][i].valid=1;
+    cache->line[op_s][i].tag = op_tag;
+    for(int k = 0; k < cache->E; k++)
+        if(cache->line[op_s][k].valid==1)
+            cache->line[op_s][k].time_tamp++;
+    cache->line[op_s][i].time_tamp = 0;
+}
+void update_info(int op_tag, int op_s)
+{
+    int index = get_index(op_s, op_tag);
+    if (index == -1)
+    {
         miss_count++;
-        if (verbose) {
-            printf(" miss");
-        }
-
-        int empty_line_index = is_full(set_index);
-        if (empty_line_index != -1) { // there are empty lines
-            update_cache_line(set_index, address_tag, empty_line_index);
-        } else { // the cache set is full
+        if (verbose)
+            printf("miss ");
+        int i = is_full(op_s);
+        if(i==-1){
             eviction_count++;
-            if (verbose) {
-                printf(" eviction");
-            }
-
-            update_cache_line(set_index, address_tag, get_LRU_index(set_index));
+            if(verbose) printf("eviction");
+            i = find_LRU(op_s);
         }
+        update(i,op_s,op_tag);
+    }
+    else{
+        hit_count++;
+        if(verbose)
+            printf("hit");
+        update(index,op_s,op_tag);
     }
 }
-
-void access_memory(int b, int s) {
+void get_trace(int s, int E, int b)
+{
     FILE *pFile;
-
     pFile = fopen(t, "r");
-
-    if (pFile == NULL) {
+    if (pFile == NULL)
+    {
         exit(-1);
     }
-
-    char operation;
+    char identifier;
     unsigned address;
     int size;
-
-    // read file
-    while (fscanf(pFile, " %c %x %d", &operation, &address, &size) > 0) {
-        // get set index and tag;
-        int address_tag = address >> (b + s);
-        int set_index = (address >> b) & (((unsigned) -1) >> (8 * sizeof(unsigned) - s));
-
-        if (verbose) {
-            printf("\n %c %x %d", operation, address, size);
-        }
-
-        switch (operation) {
-            case 'M':
-                access_memory_data(set_index, address_tag);
-                access_memory_data(set_index, address_tag);
+    // Reading lines like " M 20,1" or "L 19,3"
+    while (fscanf(pFile, " %c %x,%d", &identifier, &address, &size) > 0) // I读不进来,忽略---size没啥用
+    {
+        //想办法先得到标记位和组序号
+        int op_tag = address >> (s + b);
+        int op_s = (address >> b) & ((unsigned)(-1) >> (8 * sizeof(unsigned) - s));
+        switch (identifier)
+        {
+            case 'M': //一次存储一次加载
+                update_info(op_tag, op_s);
+                update_info(op_tag, op_s);
                 break;
-            case  'L':
-                access_memory_data(set_index, address_tag);
+            case 'L':
+                update_info(op_tag, op_s);
                 break;
             case 'S':
-                access_memory_data(set_index, address_tag);
+                update_info(op_tag, op_s);
                 break;
         }
     }
-
     fclose(pFile);
-
 }
 
-
-void print_usage_info() {
-
-    printf("Usage: ./csim-ref [-hv] -s <s> -E <E> -b <b> -t <tracefile>\n"
-           "• -h: Optional help flag that prints usage info\n"
-           "• -v: Optional verbose flag that displays trace info\n"
-           "• -s <s>: Number of set index bits (S = 2s is the number of sets)\n"
-           "• -E <E>: Associativity (number of lines per set)\n"
-           "• -b <b>: Number of block bits (B = 2b is the block size)\n"
-           "• -t <tracefile>: Name of the valgrind trace to replay\n");
-}
-
-
-int main(int argc, char **argv)
+void print_help()
 {
-    // parse the command and get operation type and address
+    printf("** A Cache Simulator by Deconx\n");
+    printf("Usage: ./csim-ref [-hv] -s <num> -E <num> -b <num> -t <file>\n");
+    printf("Options:\n");
+    printf("-h         Print this help message.\n");
+    printf("-v         Optional verbose flag.\n");
+    printf("-s <num>   Number of set index bits.\n");
+    printf("-E <num>   Number of lines per set.\n");
+    printf("-b <num>   Number of block offset bits.\n");
+    printf("-t <file>  Trace file.\n\n\n");
+    printf("Examples:\n");
+    printf("linux>  ./csim -s 4 -E 1 -b 4 -t traces/yi.trace\n");
+    printf("linux>  ./csim -v -s 8 -E 2 -b 4 -t traces/yi.trace\n");
+}
+int main(int argc, char *argv[])
+{
     char opt;
     int s, E, b;
-
-    while (-1 != (opt = getopt(argc, argv, "hvs:E:b:t:"))) {
-        switch(opt) {
+    /*
+     * s:S=2^s是组的个数
+     * E:每组中有多少行
+     * b:B=2^b每个缓冲块的字节数
+     */
+    while (-1 != (opt = getopt(argc, argv, "hvs:E:b:t:")))
+    {
+        switch (opt)
+        {
             case 'h':
-                print_usage_info();
+                print_help();
                 exit(0);
             case 'v':
                 verbose = 1;
@@ -220,15 +199,14 @@ int main(int argc, char **argv)
                 strcpy(t, optarg);
                 break;
             default:
-                printf("wrong argument");
+                print_help();
                 exit(-1);
         }
-
-        create_cache(s, E, b);
-        access_memory(b, s);
-        free_cache();
     }
-    printf("%d", hit_count);
+    Init_Cache(s, E, b); //初始化一个cache
+    get_trace(s, E, b);
+    free_Cache();
+    // printSummary(hit_count, miss_count, eviction_count)
     printSummary(hit_count, miss_count, eviction_count);
     return 0;
 }
