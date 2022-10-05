@@ -32,7 +32,7 @@ Cache *create_cache(int s, int E, int b) {
     cache->B = B; // 2^b
 
     cache->cache_line = (Cache_line **)malloc(S * sizeof(Cache_line *));
-    for (int i = 0; i < cache->S; i++) {
+    for (int i = 0; i < S; i++) {
         cache->cache_line[i] = (Cache_line *)malloc(E * sizeof(Cache_line));
         for (int j = 0; j < E; j++) {
             cache->cache_line[i][j].valid = 0;
@@ -231,7 +231,7 @@ int main(int argc, char **argv)
         access_memory(b, s);
         free_cache(cache);
     }
-
+    printf("%d", hit_count);
     printSummary(hit_count, miss_count, eviction_count);
     return 0;
 }
