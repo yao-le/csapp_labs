@@ -149,7 +149,7 @@ void access_memory(char *file, int b, int s) {
     while (fscanf(pFile, " %c %x %d", &operation, &address, &size) > 0) {
         // get set index and tag;
         int address_tag = address >> (b + s);
-        int set_index = (address >> b) & (8 * sizeof(unsigned) - s);
+        int set_index = (address >> b) & (((unsigned) -1) >> (8 * sizeof(unsigned) - s));
 
         if (verbose) {
             printf("\n %c %x %d", operation, address, size);
@@ -213,6 +213,7 @@ int main(int argc, char **argv)
                 break;
             case 't':
                 strcpy(t, optarg);
+                printf(" %s", t);
                 break;
             default:
                 printf("wrong argument");
