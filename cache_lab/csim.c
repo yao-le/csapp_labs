@@ -3,6 +3,7 @@
 #include "stdlib.h"
 #include "stdio.h"
 #include "string.h"
+#include <getopt.h>
 
 typedef struct Cache_line {
     int valid;
@@ -217,6 +218,10 @@ int main(int argc, char **argv)
                 printf("wrong argument");
                 break;
         }
+
+        cache = create_cache(s, E, b);
+        access_memory(t, b, s);
+        free_cache(cache);
     }
 
     printSummary(hit_count, miss_count, eviction_count);
