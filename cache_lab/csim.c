@@ -19,14 +19,20 @@ typedef struct Cache {
     Cache_line **cache_line;
 } Cache;
 
+int hit_count = 0;
+int miss_count = 0;
+int eviction_count = 0;
+Cache *cache = NULL;
+int verbose = 0;
+char t[1000];
 
-Cache *create_cache(int s, int E, int b) {
+void create_cache(int s, int E, int b) {
     // s -> set index bits
     // E -> number of cache_lines per set
     int S = 1 << s;
     int B = 1 << b;
 
-    Cache *cache = (Cache *)malloc(sizeof(Cache));
+    cache = (Cache *)malloc(sizeof(Cache));
     cache->S = S; // 2^s
     cache->E = E;
     cache->B = B; // 2^b
@@ -40,10 +46,9 @@ Cache *create_cache(int s, int E, int b) {
             cache->cache_line[i][j].timestamp = 0;
         }
     }
-    return cache;
 }
 
-void free_cache(Cache *cache) {
+void free_cache() {
     int S = cache->S;
     for (int i = 0; i < S; i++) {
         free(cache->cache_line[i]);
@@ -52,12 +57,6 @@ void free_cache(Cache *cache) {
     free(cache);
 }
 
-int hit_count = 0;
-int miss_count = 0;
-int eviction_count = 0;
-Cache *cache = NULL;
-int verbose = 0;
-char t[1000];
 
 int is_cache_hit(int set_index, int address_tag) {
     Cache_line *set = cache->cache_line[set_index];
@@ -197,15 +196,14 @@ void print_usage_info() {
 int main(int argc, char **argv)
 {
     // parse the command and get operation type and address
-    int opt;
-    char s, E, b;
+    char opt;
+    int s, E, b;
 
     while (-1 != (opt = getopt(argc, argv, "hvs:E:b:t:"))) {
         switch(opt) {
             case 'h':
                 print_usage_info();
                 exit(0);
-                break;
             case 'v':
                 verbose = 1;
                 break;
@@ -220,16 +218,15 @@ int main(int argc, char **argv)
                 break;
             case 't':
                 strcpy(t, optarg);
-                printf(" %s", t);
                 break;
             default:
                 printf("wrong argument");
-                break;
+                exit(-1);
         }
 
-        cache = create_cache(s, E, b);
+        create_cache(s, E, b);
         access_memory(b, s);
-        free_cache(cache);
+        free_cache();
     }
     printf("%d", hit_count);
     printSummary(hit_count, miss_count, eviction_count);
